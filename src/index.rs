@@ -13,7 +13,6 @@ fn tokenize(text: &str) -> Vec<&str> {
         .filter(|word| !word.is_empty())
         .collect()
 }
-
 /// An in-memory index.
 ///
 /// Of course, a real index for a large corpus of documents won't fit in
@@ -21,6 +20,7 @@ fn tokenize(text: &str) -> Vec<&str> {
 /// answer simple search queries. And you can use the `read`, `write`, and
 /// `merge` modules to save an in-memory index to disk and merge it with other
 /// indices, producing a large index.
+#[derive(Debug, Clone)]
 pub struct InMemoryIndex {
     /// The total number of words in the indexed documents.
     pub word_count: usize,
@@ -64,20 +64,22 @@ impl InMemoryIndex {
         let text = text.to_lowercase();
         let tokens = tokenize(&text);
         for (i, token) in tokens.iter().enumerate() {
-            let hits =
-                index.map
-                .entry(token.to_string())
-                .or_insert_with(|| {
-                    let mut hits = Vec::with_capacity(4 + 4);
-                    hits.write_u32::<LittleEndian>(document_id).unwrap();
-                    vec![hits]
-                });
+            let hits = index.map.entry(token.to_string()).or_insert_with(|| {
+                let mut hits = Vec::with_capacity(4 + 4);
+                hits.write_u32::<LittleEndian>(document_id).unwrap();
+                vec![hits]
+            });
             hits[0].write_u32::<LittleEndian>(i as u32).unwrap();
             index.word_count += 1;
         }
 
         if document_id % 100 == 0 {
-            println!("indexed document {}, {} bytes, {} words", document_id, text.len(), index.word_count);
+            println!(
+                "indexed document {}, {} bytes, {} words",
+                document_id,
+                text.len(),
+                index.word_count
+            );
         }
 
         index
@@ -90,9 +92,7 @@ impl InMemoryIndex {
     /// `*self` remains sorted by document id after merging.
     pub fn merge(&mut self, other: InMemoryIndex) {
         for (term, hits) in other.map {
-            self.map.entry(term)
-                .or_insert_with(|| vec![])
-                .extend(hits)
+            self.map.entry(term).or_insert_with(|| vec![]).extend(hits)
         }
         self.word_count += other.word_count;
     }
@@ -108,5 +108,14 @@ impl InMemoryIndex {
         // This depends on how much memory your computer has, of course.
         const REASONABLE_SIZE: usize = 100_000_000;
         self.word_count > REASONABLE_SIZE
+    }
+}
+
+impl Default for InMemoryIndex {
+    fn default() -> Self {
+        Self {
+            word_count: 0,
+            map: HashMap::new(),
+        }
     }
 }
